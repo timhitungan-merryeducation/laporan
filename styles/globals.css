@@ -22,3 +22,14 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8; 
 }
+
+@media print {
+  @page { size: landscape; margin: 10mm; }
+  body { background-color: white !important; }
+  
+  /* Sembunyikan sidebar di mode print */
+  .w-64.bg-sidebar { display: none !important; }
+  
+  /* Hapus margin agar layout penuh saat diprint */
+  .ml-64 { margin-left: 0 !important; padding: 0 !important; }
+}
