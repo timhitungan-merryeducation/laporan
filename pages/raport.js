@@ -25,8 +25,15 @@ const compressImage = (file) => {
     };
   });
 };
+import { useState, useEffect } from 'react';
 
 export default function RaportManager() {
+  // Tambahkan baris ini agar 'showSuggestions' terdefinisi
+  const [showSuggestions, setShowSuggestions] = useState(false); 
+  
+  // State untuk menyimpan data dari Sheet 'Nilai'
+  const [dataNilai, setDataNilai] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [file, setFile] = useState(null);
   const [namaSiswa, setNamaSiswa] = useState('');
   const [searchName, setSearchName] = useState('');
