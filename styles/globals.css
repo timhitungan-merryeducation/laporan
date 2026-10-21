@@ -1,7 +1,24 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
-  background-color: #f4f6f9;
+  background-color: #f8fafc; /* Warna slate-50 untuk background yang lembut */
+  font-family: 'Inter', sans-serif;
+  color: #334155; /* slate-700 */
+}
+
+/* Kustomisasi scrollbar agar lebih rapi */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1; 
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8; 
 }
