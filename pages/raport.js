@@ -150,14 +150,18 @@ export default function RaportManager() {
               <label className="block text-sm font-semibold text-slate-600 mb-1">Tahun Pelajaran</label>
               <select className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" value={tahunPelajaran} onChange={e => setTahunPelajaran(e.target.value)}>
                 <option>2025/2026</option><option>2026/2027</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-600 mb-1">Jenis Raport</label>
-              <select className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" value={jenisRaport} onChange={e => setJenisRaport(e.target.value)}>
-                <option>Sisipan Ganjil</option><option>Raport SAS (Semester Ganjil)</option>
-                <option>Sisipan Genap</option><option>Raport SAT (Semester Genap)</option>
-              </select>
+// Ganti bagian dropdown Jenis Raport (saat upload dan filter) menjadi nilai yang seragam
+<select 
+  className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" 
+  value={jenisRaport} 
+  onChange={e => setJenisRaport(e.target.value)}
+>
+  {/* Pastikan value ini yang akan dikirim dan dicari di Sheet */}
+  <option value="Sisipan Ganjil">Sisipan Ganjil</option>
+  <option value="Raport SAS (Semester Ganjil)">Raport SAS (Semester Ganjil)</option>
+  <option value="Sisipan Genap">Sisipan Genap</option>
+  <option value="Raport SAT (Semester Genap)">Raport SAT (Semester Genap)</option>
+</select>
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-600 mb-1">Pilih File (Auto-Compress)</label>
