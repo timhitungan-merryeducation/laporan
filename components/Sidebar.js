@@ -11,6 +11,7 @@ export default function Sidebar() {
     { name: 'Manajemen Raport', path: '/raport', icon: 'file-pdf' },
     { name: 'Upload Materi', path: '/upload', icon: 'cloud-upload-alt' },
     { name: 'Input Nilai', path: '/nilai', icon: 'edit' },
+    { name: 'Progress Siswa', path: '/progress', icon: 'tasks' }, // MENU BARU
     { name: 'Jadwal Kelas', path: '/jadwal', icon: 'calendar-alt' },
     { name: 'Cari File', path: '/download', icon: 'folder-open' },
     { name: 'Rekapitulasi', path: '/rekap', icon: 'chart-bar' },
