@@ -25,15 +25,11 @@ const compressImage = (file) => {
     };
   });
 };
-import { useState, useEffect } from 'react';
 
 export default function RaportManager() {
-  // Tambahkan baris ini agar 'showSuggestions' terdefinisi
+  // 1. DEKLARASI STATE (Termasuk showSuggestions untuk mengatasi error)
   const [showSuggestions, setShowSuggestions] = useState(false); 
   
-  // State untuk menyimpan data dari Sheet 'Nilai'
-  const [dataNilai, setDataNilai] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [file, setFile] = useState(null);
   const [namaSiswa, setNamaSiswa] = useState('');
   const [searchName, setSearchName] = useState('');
@@ -44,15 +40,18 @@ export default function RaportManager() {
   const [filterTahunGlobal, setFilterTahunGlobal] = useState('2026/2027');
   const [filterJenisGlobal, setFilterJenisGlobal] = useState('Sisipan Ganjil');
 
-  const { data: listSiswa } = useSWR('getSiswaDashboardStats', fetcher);
+  // 2. AMBIL DATA DARI API/SHEET (Menggunakan SWR bawaan Anda, ditambah status isLoading)
+  const { data: listSiswa, isLoading: isListSiswaLoading } = useSWR('getSiswaDashboardStats', fetcher);
   const { data: raportSiswa, mutate } = useSWR(namaSiswa ? ['getRaport', { namaSiswa }] : null, ([action, params]) => fetcher(action, params));
   const { data: raportGlobal } = useSWR(['getRaport', { tahun: filterTahunGlobal }], ([action, params]) => fetcher(action, params));
 
+  // 3. FILTER PENCARIAN SISWA
   const filteredStudents = useMemo(() => {
     if (!listSiswa || !searchName || !Array.isArray(listSiswa)) return [];
     return listSiswa.filter(s => s.nama && s.nama.toLowerCase().includes(searchName.toLowerCase())).slice(0, 5);
   }, [listSiswa, searchName]);
 
+  // 4. FUNGSI UPLOAD
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!file || !namaSiswa) return Swal.fire('Oops!', 'Siswa & File wajib diisi.', 'warning');
@@ -64,10 +63,14 @@ export default function RaportManager() {
       const base64Data = file.type.startsWith('image/') ? await compressImage(file) : await new Promise(r => { const f = new FileReader(); f.onload = e => r(e.target.result); f.readAsDataURL(file); });
       await poster('uploadRaport', { namaSiswa, jenisRaport, tahunPelajaran, kelas: "-", fileName: file.name, base64: base64Data });
       Swal.fire('Sukses!', `Raport ${namaSiswa} tersimpan di folder ${tahunPelajaran}/${jenisRaport}`, 'success');
-      setFile(null); mutate();
-    } catch (err) { Swal.fire('Error', 'Gagal upload.', 'error'); }
+      setFile(null); 
+      mutate();
+    } catch (err) { 
+      Swal.fire('Error', 'Gagal upload.', 'error'); 
+    }
   };
 
+  // 5. FUNGSI DOWNLOAD GLOBAL
   const handleDownloadGlobal = async () => {
     if (!raportGlobal || raportGlobal.length === 0) return Swal.fire('Info', 'Belum ada data raport.', 'info');
     
@@ -78,9 +81,25 @@ export default function RaportManager() {
     try {
       await downloadMergedRaport(targetPdfs, `Global_${filterJenisGlobal.replace(/ /g, '_')}_${filterTahunGlobal.replace(/\//g, '-')}`);
       Swal.close();
-    } catch (e) { Swal.fire('Error', 'Gagal mengunduh file.', 'error'); }
+    } catch (e) { 
+      Swal.fire('Error', 'Gagal mengunduh file.', 'error'); 
+    }
   };
 
+  // 6. LOADING INDICATOR
+  // Mencegah Prerender Error saat data Sheet Nilai (listSiswa) belum siap
+  if (isListSiswaLoading) {
+    return (
+      <Layout>
+        <div className="flex flex-col items-center justify-center py-20">
+          <Loader /> {/* Menggunakan komponen Loader bawaan Anda */}
+          <p className="mt-4 text-slate-500">Memuat data dari sistem, mohon tunggu...</p>
+        </div>
+      </Layout>
+    );
+  }
+
+  // 7. RENDER UI UTAMA
   return (
     <Layout>
       <div className="mb-6 border-b pb-4 flex justify-between items-end">
@@ -97,10 +116,33 @@ export default function RaportManager() {
           <form onSubmit={handleUpload} className="space-y-4">
             <div className="relative">
               <label className="block text-sm font-semibold text-slate-600 mb-1">Cari Nama Siswa</label>
-              <input type="text" placeholder="Ketik nama..." className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" value={searchName} onChange={(e) => { setSearchName(e.target.value); setNamaSiswa(''); setShowSuggestions(true); }} required />
+              <input 
+                type="text" 
+                placeholder="Ketik nama..." 
+                className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" 
+                value={searchName} 
+                onChange={(e) => { 
+                  setSearchName(e.target.value); 
+                  setNamaSiswa(''); 
+                  setShowSuggestions(true); 
+                }} 
+                required 
+              />
               {showSuggestions && (
                 <ul className="absolute z-10 w-full bg-white border rounded-lg shadow-xl mt-1 max-h-48 overflow-y-auto">
-                  {filteredStudents.map((s, i) => <li key={i} className="p-3 hover:bg-blue-50 cursor-pointer text-sm border-b" onClick={() => { setNamaSiswa(s.nama); setSearchName(s.nama); setShowSuggestions(false); }}><span className="font-bold">{s.nama}</span></li>)}
+                  {filteredStudents.map((s, i) => (
+                    <li 
+                      key={i} 
+                      className="p-3 hover:bg-blue-50 cursor-pointer text-sm border-b" 
+                      onClick={() => { 
+                        setNamaSiswa(s.nama); 
+                        setSearchName(s.nama); 
+                        setShowSuggestions(false); 
+                      }}
+                    >
+                      <span className="font-bold">{s.nama}</span>
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>
@@ -137,9 +179,15 @@ export default function RaportManager() {
               <p className="text-sm text-slate-300">Gabungkan PDF seluruh siswa dalam 1 file berdasarkan filter.</p>
             </div>
             <div className="flex gap-2">
-               <select className="border-none p-2 rounded bg-slate-700 text-sm" value={filterTahunGlobal} onChange={e => setFilterTahunGlobal(e.target.value)}><option>2025/2026</option><option>2026/2027</option></select>
-               <select className="border-none p-2 rounded bg-slate-700 text-sm" value={filterJenisGlobal} onChange={e => setFilterJenisGlobal(e.target.value)}><option>Sisipan Ganjil</option><option>Raport SAS (Semester Ganjil)</option><option>Sisipan Genap</option><option>Raport SAT (Semester Genap)</option></select>
-               <button onClick={handleDownloadGlobal} className="bg-amber-500 px-4 py-2 rounded font-bold hover:bg-amber-600 shadow text-slate-900"><i className="fas fa-file-pdf"></i> Unduh</button>
+               <select className="border-none p-2 rounded bg-slate-700 text-sm" value={filterTahunGlobal} onChange={e => setFilterTahunGlobal(e.target.value)}>
+                 <option>2025/2026</option><option>2026/2027</option>
+               </select>
+               <select className="border-none p-2 rounded bg-slate-700 text-sm" value={filterJenisGlobal} onChange={e => setFilterJenisGlobal(e.target.value)}>
+                 <option>Sisipan Ganjil</option><option>Raport SAS (Semester Ganjil)</option><option>Sisipan Genap</option><option>Raport SAT (Semester Genap)</option>
+               </select>
+               <button onClick={handleDownloadGlobal} className="bg-amber-500 px-4 py-2 rounded font-bold hover:bg-amber-600 shadow text-slate-900">
+                 <i className="fas fa-file-pdf"></i> Unduh
+               </button>
             </div>
           </div>
 
@@ -155,7 +203,7 @@ export default function RaportManager() {
                   {raportSiswa?.map((r, i) => (
                     <tr key={i} className="hover:bg-blue-50/50">
                       <td className="p-3 border-b font-bold">{r.tahun}</td><td className="p-3 border-b text-slate-700">{r.jenis}</td>
-                      <td className="p-3 border-b"><a href={r.url} target="_blank" className="bg-slate-100 text-blue-600 px-3 py-1 rounded border hover:bg-blue-600 hover:text-white font-bold text-xs">Lihat File</a></td>
+                      <td className="p-3 border-b"><a href={r.url} target="_blank" rel="noreferrer" className="bg-slate-100 text-blue-600 px-3 py-1 rounded border hover:bg-blue-600 hover:text-white font-bold text-xs">Lihat File</a></td>
                     </tr>
                   ))}
                 </tbody>
