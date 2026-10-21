@@ -4,6 +4,41 @@ import Layout from '../components/Layout';
 import Loader from '../components/Loader';
 import { poster, fetcher } from '../utils/api';
 import { downloadMergedRaport } from '../utils/pdfProcessor';
+import Swal from 'sweetalert2'; // Notifikasi modern
+
+// Fungsi kompresi gambar HTML5 Canvas
+const compressImage = (file, maxSizeMB = 1.5) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        // Resize jika terlalu besar (maks 1500px)
+        const MAX_SIZE = 1500;
+        if (width > height && width > MAX_SIZE) {
+          height *= MAX_SIZE / width; width = MAX_SIZE;
+        } else if (height > MAX_SIZE) {
+          width *= MAX_SIZE / height; height = MAX_SIZE;
+        }
+        
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Kompres ke JPEG 70% quality
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        resolve(dataUrl);
+      };
+      img.onerror = (err) => reject(err);
+    };
+  });
+};
 
 export default function RaportManager() {
   const [file, setFile] = useState(null);
@@ -15,235 +50,152 @@ export default function RaportManager() {
   const [isUploading, setIsUploading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // Ambil daftar seluruh siswa
   const { data: listSiswa } = useSWR('getSiswaDashboardStats', fetcher);
   
-  // Ambil data raport siswa jika nama sudah dikonfirmasi
+  // Mengambil raport 1 siswa
   const { data: raportSiswa, mutate } = useSWR(
     namaSiswa ? ['getRaport', { namaSiswa, tahun: filterTahun }] : null, 
     ([action, params]) => fetcher(action, params)
   );
 
-  // Logic Autocomplete Siswa yang Diperbarui untuk format "Nama-Sekolah"
-  const filteredStudents = useMemo(() => {
-    if (!listSiswa || !searchName) return [];
-    const searchLower = searchName.toLowerCase();
-    
-    // Pastikan listSiswa adalah array sebelum di-filter
-    if (!Array.isArray(listSiswa)) return [];
-    
-    return listSiswa.filter(s => {
-      // Kita hanya memfilter berdasarkan Nama Siswa (bukan sekolahnya)
-      return s.nama && s.nama.toLowerCase().includes(searchLower);
-    }).slice(0, 5); // Batasi 5 hasil agar dropdown tidak terlalu panjang
-  }, [listSiswa, searchName]);
+  // Mengambil semua raport global untuk tombol gabungan
+  const { data: semuaRaport } = useSWR(['getRaport', { tahun: filterTahun }], ([action, params]) => fetcher(action, params));
 
-  const selectStudent = (name) => {
-    setNamaSiswa(name);
-    setSearchName(name); // Isi input text dengan nama lengkap
-    setShowSuggestions(false); // Tutup dropdown
-  };
+  const filteredStudents = useMemo(() => {
+    if (!listSiswa || !searchName || !Array.isArray(listSiswa)) return [];
+    return listSiswa.filter(s => s.nama && s.nama.toLowerCase().includes(searchName.toLowerCase())).slice(0, 5);
+  }, [listSiswa, searchName]);
 
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!file || !namaSiswa) return alert('Nama Siswa dan File wajib diisi.');
-    setIsUploading(true);
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const payload = {
-        namaSiswa,
-        jenisRaport,
-        tahunPelajaran,
-        kelas: "-", // Akan diisi "-" karena data kelas ada di kolom terpisah dari nama
-        fileName: file.name,
-        base64: event.target.result,
-      };
-      
-      try {
-        await poster('uploadRaport', payload);
-        alert('Raport berhasil diunggah!');
-        setFile(null); // Reset file input
-        mutate(); // Refresh tabel arsip raport
-      } catch (err) {
-        alert('Gagal mengunggah raport. Periksa koneksi atau ukuran file.');
-      }
-      setIsUploading(false);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleDownloadGabungan = async () => {
-    if (!raportSiswa || raportSiswa.length === 0) return alert('Belum ada raport untuk siswa ini di tahun yang dipilih.');
+    if (!file || !namaSiswa) return Swal.fire('Peringatan', 'Nama Siswa dan File wajib diisi.', 'warning');
     
-    // Memberikan feedback visual saat proses menggabungkan PDF
-    const btn = document.getElementById('btn-download');
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
-    btn.disabled = true;
-
-    try {
-      const urls = raportSiswa.map(r => r.url);
-      await downloadMergedRaport(urls, namaSiswa);
-    } catch (e) {
-      alert("Gagal menggabungkan PDF: Pastikan link Google Drive dapat diakses publik.");
+    // Cek ukuran PDF (maks 2.5MB agar aman di Vercel)
+    if (file.type === 'application/pdf' && file.size > 2.5 * 1024 * 1024) {
+      return Swal.fire('File Terlalu Besar', 'Ukuran PDF maksimal 2.5MB. Silakan kompres PDF Anda terlebih dahulu menggunakan alat online.', 'error');
     }
 
-    btn.innerHTML = originalText;
-    btn.disabled = false;
+    setIsUploading(true);
+    let base64Data = '';
+
+    try {
+      if (file.type.startsWith('image/')) {
+        base64Data = await compressImage(file);
+      } else {
+        base64Data = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.readAsDataURL(file);
+        });
+      }
+
+      await poster('uploadRaport', { namaSiswa, jenisRaport, tahunPelajaran, kelas: "-", fileName: file.name, base64: base64Data });
+      
+      Swal.fire({ title: 'Berhasil!', text: 'Raport berhasil diunggah.', icon: 'success', timer: 2000, showConfirmButton: false });
+      setFile(null);
+      mutate(); 
+    } catch (err) {
+      Swal.fire('Error', 'Gagal mengunggah raport. ' + err.message, 'error');
+    }
+    setIsUploading(false);
+  };
+
+  const handleDownloadGabunganGlobal = async () => {
+    if (!semuaRaport || semuaRaport.length === 0) return Swal.fire('Kosong', 'Belum ada raport yang diunggah pada tahun ini.', 'info');
+    
+    Swal.fire({ title: 'Memproses PDF', text: 'Menggabungkan raport semua siswa. Mohon tunggu...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    try {
+      const urls = semuaRaport.map(r => r.url);
+      await downloadMergedRaport(urls, 'Seluruh_Siswa_Global');
+      Swal.close();
+    } catch (e) {
+      Swal.fire('Gagal', 'Terjadi kesalahan saat menggabungkan PDF. Pastikan link Drive publik.', 'error');
+    }
   };
 
   return (
     <Layout>
-      <div className="mb-6 border-b pb-4">
-        <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Manajemen Raport Siswa</h2>
-        <p className="text-slate-500 mt-1">Unggah, filter, dan gabungkan raport PDF/Foto siswa.</p>
+      <div className="mb-6 border-b pb-4 flex justify-between items-end">
+        <div>
+          <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Manajemen Raport Siswa</h2>
+          <p className="text-slate-500 mt-1">Unggah dan kompres file otomatis, serta gabungkan raport seluruh siswa.</p>
+        </div>
+        <button onClick={handleDownloadGabunganGlobal} className="bg-amber-500 text-white px-5 py-2.5 rounded-lg shadow-md font-bold hover:bg-amber-600 transition-colors flex items-center gap-2">
+          <i className="fas fa-file-archive"></i> Download Semua Raport (Global)
+        </button>
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Form Upload */}
         <div className="lg:col-span-1 bg-white p-6 rounded-xl shadow-md border-t-4 border-blue-600">
           <h3 className="font-bold text-slate-700 mb-4 border-b pb-2">Upload Raport Baru</h3>
           <form onSubmit={handleUpload} className="space-y-4">
-            
             <div className="relative">
               <label className="block text-sm font-semibold text-slate-600 mb-1">Cari Nama Siswa</label>
-              <input 
-                type="text" 
-                placeholder="Mulai ketik nama siswa..." 
-                className="w-full border p-2.5 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none transition" 
-                value={searchName} 
-                onChange={(e) => {
-                  setSearchName(e.target.value);
-                  setNamaSiswa(''); // Reset state nama pasti jika user mengedit text
-                  setShowSuggestions(true);
-                }} 
-                required 
-              />
-              
-              {/* Dropdown Rekomendasi Siswa */}
+              <input type="text" placeholder="Mulai ketik nama siswa..." className="w-full border p-2.5 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none" value={searchName} onChange={(e) => { setSearchName(e.target.value); setNamaSiswa(''); setShowSuggestions(true); }} required />
               {showSuggestions && searchName && (
                 <ul className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg shadow-xl mt-1 max-h-48 overflow-y-auto">
                   {filteredStudents.length > 0 ? (
                     filteredStudents.map((s, i) => (
-                      <li key={i} className="p-3 hover:bg-blue-50 cursor-pointer text-sm border-b transition-colors" onClick={() => selectStudent(s.nama)}>
-                        <span className="font-bold text-slate-800">{s.nama}</span> <span className="text-xs text-slate-500">({s.sekolah}) - Wali: {s.guruWali}</span>
+                      <li key={i} className="p-3 hover:bg-blue-50 cursor-pointer text-sm border-b transition-colors" onClick={() => { setNamaSiswa(s.nama); setSearchName(s.nama); setShowSuggestions(false); }}>
+                        <span className="font-bold text-slate-800">{s.nama}</span> <span className="text-xs text-slate-500">({s.sekolah})</span>
                       </li>
                     ))
-                  ) : (
-                    <li className="p-3 text-sm text-slate-400 text-center">Data siswa tidak ditemukan</li>
-                  )}
+                  ) : <li className="p-3 text-sm text-slate-400 text-center">Data tidak ditemukan</li>}
                 </ul>
               )}
             </div>
-
             <div>
               <label className="block text-sm font-semibold text-slate-600 mb-1">Tahun Pelajaran</label>
-              <select className="w-full border p-2.5 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none transition" value={tahunPelajaran} onChange={(e) => setTahunPelajaran(e.target.value)}>
-                <option>2025/2026</option>
-                <option>2026/2027</option>
-                <option>2027/2028</option>
-              </select>
+              <select className="w-full border p-2.5 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none" value={tahunPelajaran} onChange={(e) => setTahunPelajaran(e.target.value)}><option>2025/2026</option><option>2026/2027</option><option>2027/2028</option></select>
             </div>
-
             <div>
               <label className="block text-sm font-semibold text-slate-600 mb-1">Jenis Raport</label>
-              <select className="w-full border p-2.5 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none transition" value={jenisRaport} onChange={(e) => setJenisRaport(e.target.value)}>
-                <option value="Sisipan">Raport Sisipan</option>
-                <option value="Semester">Raport Semester</option>
-              </select>
+              <select className="w-full border p-2.5 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none" value={jenisRaport} onChange={(e) => setJenisRaport(e.target.value)}><option value="Sisipan">Raport Sisipan</option><option value="Semester">Raport Semester</option></select>
             </div>
-
             <div>
-              <label className="block text-sm font-semibold text-slate-600 mb-1">File (PDF/Gambar)</label>
-              <input type="file" accept=".pdf, image/*" className="w-full border p-2 rounded-lg bg-slate-50 text-sm focus:ring-2 focus:ring-blue-500" onChange={(e) => setFile(e.target.files[0])} required />
+              <label className="block text-sm font-semibold text-slate-600 mb-1">File (PDF/Gambar - Auto Compress)</label>
+              <input type="file" accept=".pdf, image/*" className="w-full border p-2 rounded-lg bg-slate-50 text-sm" onChange={(e) => setFile(e.target.files[0])} required />
             </div>
-
-            <button type="submit" disabled={isUploading || !namaSiswa} className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold shadow-md hover:bg-blue-700 disabled:opacity-50 transition-colors mt-4 flex justify-center items-center gap-2">
-               {isUploading ? 'Mengunggah...' : <><i className="fas fa-cloud-upload-alt"></i> Upload Raport</>}
+            <button type="submit" disabled={isUploading || !namaSiswa} className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold shadow-md hover:bg-blue-700 disabled:opacity-50 transition-colors mt-4">
+               {isUploading ? 'Mengunggah & Mengompresi...' : 'Upload Raport'}
             </button>
-            {!namaSiswa && searchName && <p className="text-xs text-amber-500 text-center mt-2"><i className="fas fa-exclamation-triangle"></i> Silakan pilih nama siswa dari daftar rekomendasi dropdown.</p>}
           </form>
         </div>
 
-        {/* Tabel Arsip Raport */}
         <div className="lg:col-span-2">
           {namaSiswa ? (
             <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-end border-b pb-4 mb-4 gap-4">
+              <div className="flex justify-between items-end border-b pb-4 mb-4">
                 <div>
-                  <h3 className="text-lg font-bold text-slate-800">Arsip Raport</h3>
+                  <h3 className="text-lg font-bold text-slate-800">Arsip Raport Individu</h3>
                   <p className="text-blue-600 font-bold text-xl">{namaSiswa}</p>
                 </div>
-                
-                <div className="flex flex-wrap gap-3 w-full md:w-auto">
-                  {/* Filter Tabel Berdasarkan Tahun */}
-                  <div className="w-full md:w-auto">
-                    <label className="text-xs font-semibold text-slate-500 block mb-1">Filter Tahun</label>
-                    <select className="border p-2 rounded-lg text-sm bg-slate-50 outline-none w-full" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
-                      <option value="">Semua Tahun</option>
-                      <option value="2025/2026">2025/2026</option>
-                      <option value="2026/2027">2026/2027</option>
-                    </select>
-                  </div>
-
-                  <div className="self-end w-full md:w-auto">
-                    <button id="btn-download" onClick={handleDownloadGabungan} className="w-full bg-emerald-600 text-white px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-emerald-700 shadow-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
-                      <i className="fas fa-file-pdf"></i> Download Utuh (Gabungan)
-                    </button>
-                  </div>
+                <div className="w-1/3">
+                  <label className="text-xs font-semibold text-slate-500 block mb-1">Filter Tahun</label>
+                  <select className="border p-2 rounded-lg text-sm w-full bg-slate-50 outline-none" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}><option value="">Semua Tahun</option><option value="2025/2026">2025/2026</option><option value="2026/2027">2026/2027</option></select>
                 </div>
               </div>
-
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm border-collapse">
                   <thead className="bg-slate-50 text-slate-600">
-                    <tr>
-                      <th className="p-3 border-b font-semibold rounded-tl-lg">Tahun Pelajaran</th>
-                      <th className="p-3 border-b font-semibold">Jenis Raport</th>
-                      <th className="p-3 border-b font-semibold">Tgl Upload</th>
-                      <th className="p-3 border-b font-semibold rounded-tr-lg">Aksi</th>
-                    </tr>
+                    <tr><th className="p-3 border-b">Tahun</th><th className="p-3 border-b">Jenis</th><th className="p-3 border-b">Tgl Upload</th><th className="p-3 border-b">Aksi</th></tr>
                   </thead>
                   <tbody>
-                    {raportSiswa === undefined ? (
-                      <tr><td colSpan="4" className="text-center p-8"><Loader /></td></tr>
-                    ) : raportSiswa.length > 0 ? (
-                      raportSiswa.map((r, i) => (
-                        <tr key={i} className="hover:bg-blue-50/50 transition-colors">
-                          <td className="p-4 border-b text-slate-800 font-bold">{r.tahun || '-'}</td>
-                          <td className="p-4 border-b text-slate-700">
-                            <span className={`px-2 py-1 rounded text-xs font-bold ${r.jenis === 'Semester' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
-                              {r.jenis}
-                            </span>
-                          </td>
-                          <td className="p-4 border-b text-slate-500">{new Date(r.timestamp).toLocaleDateString('id-ID')}</td>
-                          <td className="p-4 border-b">
-                            <a href={r.url} target="_blank" rel="noopener noreferrer" className="bg-white text-blue-600 px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-600 hover:text-white transition-colors shadow-sm text-xs font-bold inline-flex items-center gap-1">
-                              <i className="fas fa-eye"></i> Lihat PDF
-                            </a>
-                          </td>
+                    {raportSiswa === undefined ? <tr><td colSpan="4" className="text-center p-8"><Loader /></td></tr> : raportSiswa.length > 0 ? raportSiswa.map((r, i) => (
+                        <tr key={i} className="hover:bg-blue-50/50">
+                          <td className="p-4 border-b font-bold">{r.tahun}</td><td className="p-4 border-b">{r.jenis}</td><td className="p-4 border-b text-slate-500">{new Date(r.timestamp).toLocaleDateString('id-ID')}</td>
+                          <td className="p-4 border-b"><a href={r.url} target="_blank" rel="noopener noreferrer" className="bg-slate-100 text-blue-600 px-3 py-1.5 rounded-lg border hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold">Lihat</a></td>
                         </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan="4" className="text-center p-12 text-slate-400 bg-slate-50/50 rounded-b-lg">
-                          <i className="fas fa-folder-open text-3xl mb-3 opacity-50 block"></i>
-                          Belum ada arsip raport untuk siswa ini pada tahun yang dipilih.
-                        </td>
-                      </tr>
-                    )}
+                      )) : <tr><td colSpan="4" className="text-center p-12 text-slate-400">Belum ada raport.</td></tr>}
                   </tbody>
                 </table>
               </div>
             </div>
           ) : (
-            <div className="bg-white p-12 rounded-xl shadow-md text-center border-2 border-dashed border-slate-200 flex flex-col items-center justify-center h-full min-h-[400px]">
-               <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-6 shadow-inner">
-                 <i className="fas fa-user-graduate text-4xl text-slate-300"></i>
-               </div>
-               <h3 className="text-xl font-bold text-slate-700">Pilih Siswa Terlebih Dahulu</h3>
-               <p className="text-slate-500 mt-2 max-w-md mx-auto">Gunakan kotak pencarian di sebelah kiri untuk mencari nama siswa. Daftar arsip raport akan muncul di sini setelah Anda memilih siswa.</p>
+            <div className="bg-white p-12 rounded-xl shadow-md text-center border-2 border-dashed border-slate-200 h-full flex flex-col items-center justify-center">
+               <i className="fas fa-user-graduate text-4xl text-slate-300 mb-4 bg-slate-50 p-6 rounded-full"></i>
+               <h3 className="font-bold text-slate-700">Pilih Siswa</h3>
+               <p className="text-slate-500 text-sm mt-2">Cari nama siswa di panel kiri untuk melihat arsip pribadinya.</p>
             </div>
           )}
         </div>
