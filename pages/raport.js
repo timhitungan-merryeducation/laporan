@@ -27,9 +27,7 @@ const compressImage = (file) => {
 };
 
 export default function RaportManager() {
-  // 1. DEKLARASI STATE (Termasuk showSuggestions untuk mengatasi error)
   const [showSuggestions, setShowSuggestions] = useState(false); 
-  
   const [file, setFile] = useState(null);
   const [namaSiswa, setNamaSiswa] = useState('');
   const [searchName, setSearchName] = useState('');
@@ -40,18 +38,15 @@ export default function RaportManager() {
   const [filterTahunGlobal, setFilterTahunGlobal] = useState('2026/2027');
   const [filterJenisGlobal, setFilterJenisGlobal] = useState('Sisipan Ganjil');
 
-  // 2. AMBIL DATA DARI API/SHEET (Menggunakan SWR bawaan Anda, ditambah status isLoading)
   const { data: listSiswa, isLoading: isListSiswaLoading } = useSWR('getSiswaDashboardStats', fetcher);
   const { data: raportSiswa, mutate } = useSWR(namaSiswa ? ['getRaport', { namaSiswa }] : null, ([action, params]) => fetcher(action, params));
   const { data: raportGlobal } = useSWR(['getRaport', { tahun: filterTahunGlobal }], ([action, params]) => fetcher(action, params));
 
-  // 3. FILTER PENCARIAN SISWA
   const filteredStudents = useMemo(() => {
     if (!listSiswa || !searchName || !Array.isArray(listSiswa)) return [];
     return listSiswa.filter(s => s.nama && s.nama.toLowerCase().includes(searchName.toLowerCase())).slice(0, 5);
   }, [listSiswa, searchName]);
 
-  // 4. FUNGSI UPLOAD
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!file || !namaSiswa) return Swal.fire('Oops!', 'Siswa & File wajib diisi.', 'warning');
@@ -70,7 +65,6 @@ export default function RaportManager() {
     }
   };
 
-  // 5. FUNGSI DOWNLOAD GLOBAL
   const handleDownloadGlobal = async () => {
     if (!raportGlobal || raportGlobal.length === 0) return Swal.fire('Info', 'Belum ada data raport.', 'info');
     
@@ -86,20 +80,17 @@ export default function RaportManager() {
     }
   };
 
-  // 6. LOADING INDICATOR
-  // Mencegah Prerender Error saat data Sheet Nilai (listSiswa) belum siap
   if (isListSiswaLoading) {
     return (
       <Layout>
         <div className="flex flex-col items-center justify-center py-20">
-          <Loader /> {/* Menggunakan komponen Loader bawaan Anda */}
+          <Loader /> 
           <p className="mt-4 text-slate-500">Memuat data dari sistem, mohon tunggu...</p>
         </div>
       </Layout>
     );
   }
 
-  // 7. RENDER UI UTAMA
   return (
     <Layout>
       <div className="mb-6 border-b pb-4 flex justify-between items-end">
@@ -110,7 +101,6 @@ export default function RaportManager() {
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Kolom Kiri: Form Upload */}
         <div className="lg:col-span-1 bg-white p-6 rounded-xl shadow-md border-t-4 border-blue-600">
           <h3 className="font-bold text-slate-700 mb-4 border-b pb-2">Upload Raport Baru</h3>
           <form onSubmit={handleUpload} className="space-y-4">
@@ -146,23 +136,30 @@ export default function RaportManager() {
                 </ul>
               )}
             </div>
+            
+            {/* PERBAIKAN: Tag <select> ditutup dengan benar dan dipisah dari Jenis Raport */}
             <div>
               <label className="block text-sm font-semibold text-slate-600 mb-1">Tahun Pelajaran</label>
               <select className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" value={tahunPelajaran} onChange={e => setTahunPelajaran(e.target.value)}>
-                <option>2025/2026</option><option>2026/2027</option>
-// Ganti bagian dropdown Jenis Raport (saat upload dan filter) menjadi nilai yang seragam
-<select 
-  className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" 
-  value={jenisRaport} 
-  onChange={e => setJenisRaport(e.target.value)}
->
-  {/* Pastikan value ini yang akan dikirim dan dicari di Sheet */}
-  <option value="Sisipan Ganjil">Sisipan Ganjil</option>
-  <option value="Raport SAS (Semester Ganjil)">Raport SAS (Semester Ganjil)</option>
-  <option value="Sisipan Genap">Sisipan Genap</option>
-  <option value="Raport SAT (Semester Genap)">Raport SAT (Semester Genap)</option>
-</select>
+                <option>2025/2026</option>
+                <option>2026/2027</option>
+              </select>
             </div>
+            
+            <div>
+              <label className="block text-sm font-semibold text-slate-600 mb-1">Jenis Raport</label>
+              <select 
+                className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" 
+                value={jenisRaport} 
+                onChange={e => setJenisRaport(e.target.value)}
+              >
+                <option value="Sisipan Ganjil">Sisipan Ganjil</option>
+                <option value="Raport SAS (Semester Ganjil)">Raport SAS (Semester Ganjil)</option>
+                <option value="Sisipan Genap">Sisipan Genap</option>
+                <option value="Raport SAT (Semester Genap)">Raport SAT (Semester Genap)</option>
+              </select>
+            </div>
+
             <div>
               <label className="block text-sm font-semibold text-slate-600 mb-1">Pilih File (Auto-Compress)</label>
               <input type="file" accept=".pdf, image/*" className="w-full border p-2 rounded-lg bg-slate-50 text-sm" onChange={e => setFile(e.target.files[0])} required />
@@ -173,10 +170,7 @@ export default function RaportManager() {
           </form>
         </div>
 
-        {/* Kolom Kanan: Download Global & Arsip Individu */}
         <div className="lg:col-span-2 space-y-6">
-          
-          {/* Panel Download Global */}
           <div className="bg-slate-800 p-6 rounded-xl shadow-md text-white flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
               <h3 className="font-bold text-lg text-amber-400">Unduh Gabungan (Global)</h3>
@@ -195,7 +189,6 @@ export default function RaportManager() {
             </div>
           </div>
 
-          {/* Panel Individu */}
           {namaSiswa ? (
             <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100">
               <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-2">Arsip Pribadi: <span className="text-blue-600">{namaSiswa}</span></h3>
