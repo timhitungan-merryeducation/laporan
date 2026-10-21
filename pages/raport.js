@@ -44,8 +44,9 @@ export default function RaportManager() {
   const { data: raportSiswa, mutate } = useSWR(namaSiswa ? ['getRaport', { namaSiswa }] : null, ([action, params]) => fetcher(action, params));
   
   // Mengambil arsip global untuk digabungkan
-  const { data: raportGlobal } = useSWR(['getRaportGlobal', { tahun: filterTahunGlobal, jenis: filterJenisGlobal }], ([action, params]) => fetcher(action, params));
-
+  // Baris ini yang akan mengirim command ke Apps Script untuk mengambil data arsip yang digabung
+const { data: raportGlobal } = useSWR(['getRaportGlobal', { tahun: filterTahunGlobal, jenis: filterJenisGlobal }], ([action, params]) => fetcher(action, params));
+  
   const filteredStudents = useMemo(() => {
     if (!listSiswa || !searchName || !Array.isArray(listSiswa)) return [];
     return listSiswa.filter(s => s.nama && s.nama.toLowerCase().includes(searchName.toLowerCase())).slice(0, 5);
