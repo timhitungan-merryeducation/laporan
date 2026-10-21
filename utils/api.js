@@ -1,8 +1,10 @@
 import axios from 'axios';
 
 export const fetcher = async (action, params = {}) => {
-  // Sekarang browser meminta ke server Vercel lokal, bukan ke Google
-  const res = await axios.get('/api/proxy', { params: { action, ...params } });
+  // Tambahkan timestamp agar Vercel/SWR tidak nge-cache data (selalu fresh)
+  const res = await axios.get('/api/proxy', { 
+    params: { action, t: Date.now(), ...params } 
+  });
   return res.data.data;
 };
 
