@@ -90,7 +90,8 @@ export default function RaportManager() {
       setNamaSiswa('');
       mutate();
     } catch (err) { 
-      Swal.fire('Error', 'Gagal upload. Periksa koneksi API backend Anda.', 'error'); 
+      // MUNCULKAN ERROR ASLINYA DI SINI, JANGAN PAKAI TEKS STATIS
+      Swal.fire('Upload Bermasalah', err.message || 'Terjadi kesalahan sistem yang tidak diketahui.', 'error'); 
     }
   };
 
