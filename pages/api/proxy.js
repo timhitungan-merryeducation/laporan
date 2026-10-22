@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Masukkan URL Deployment Baru Anda di sini
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxecjzyeg9InFUOHgKVa2Zur9GS94CXEwWIoHdkp5xJir3gRnfRQsGDEXfWIdUlm-hCUg/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx5UcOxFkCKvEcXI2Nb1e37Fqeuphf9rNM5dgxHybFS4sh8oqWvy3qSaiGAJVKnAeqB-g/exec';
 
 export default async function handler(req, res) {
   try {
