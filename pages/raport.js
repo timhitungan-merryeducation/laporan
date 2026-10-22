@@ -29,6 +29,7 @@ const compressImage = (file) => {
 export default function RaportManager() {
   const [showSuggestions, setShowSuggestions] = useState(false); 
   const [file, setFile] = useState(null);
+  const [isDragging, setIsDragging] = useState(false); // State Drag & Drop
   const [namaSiswa, setNamaSiswa] = useState('');
   const [searchName, setSearchName] = useState('');
   
@@ -39,18 +40,37 @@ export default function RaportManager() {
   const [filterJenisGlobal, setFilterJenisGlobal] = useState('Sisipan Ganjil');
 
   const { data: listSiswa, isLoading: isListSiswaLoading } = useSWR('getSiswaDashboardStats', fetcher);
-  
-  // Mengambil arsip individu
   const { data: raportSiswa, mutate } = useSWR(namaSiswa ? ['getRaport', { namaSiswa }] : null, ([action, params]) => fetcher(action, params));
-  
-  // Mengambil arsip global untuk digabungkan
-  // Baris ini yang akan mengirim command ke Apps Script untuk mengambil data arsip yang digabung
-const { data: raportGlobal } = useSWR(['getRaportGlobal', { tahun: filterTahunGlobal, jenis: filterJenisGlobal }], ([action, params]) => fetcher(action, params));
-  
+  const { data: raportGlobal } = useSWR(['getRaportGlobal', { tahun: filterTahunGlobal, jenis: filterJenisGlobal }], ([action, params]) => fetcher(action, params));
+
   const filteredStudents = useMemo(() => {
     if (!listSiswa || !searchName || !Array.isArray(listSiswa)) return [];
     return listSiswa.filter(s => s.nama && s.nama.toLowerCase().includes(searchName.toLowerCase())).slice(0, 5);
   }, [listSiswa, searchName]);
+
+  // Event Handlers untuk Drag and Drop
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const droppedFile = e.dataTransfer.files[0];
+      if (droppedFile.type === 'application/pdf' || droppedFile.type.startsWith('image/')) {
+        setFile(droppedFile);
+      } else {
+        Swal.fire('Format Salah', 'Hanya menerima file PDF atau Gambar.', 'error');
+      }
+    }
+  };
 
   const handleUpload = async (e) => {
     e.preventDefault();
@@ -62,7 +82,6 @@ const { data: raportGlobal } = useSWR(['getRaportGlobal', { tahun: filterTahunGl
     try {
       const base64Data = file.type.startsWith('image/') ? await compressImage(file) : await new Promise(r => { const f = new FileReader(); f.onload = e => r(e.target.result); f.readAsDataURL(file); });
       
-      // Mengirim ke API. Pastikan API backend menulis payload ini ke Sheet "DataRaport"
       await poster('uploadRaport', { namaSiswa, jenisRaport, tahunPelajaran, kelas: "-", fileName: file.name, base64: base64Data });
       
       Swal.fire('Sukses!', `Raport ${namaSiswa} berhasil disimpan.`, 'success');
@@ -76,7 +95,6 @@ const { data: raportGlobal } = useSWR(['getRaportGlobal', { tahun: filterTahunGl
   };
 
   const handleDownloadGlobal = async () => {
-    // Validasi ini memicu alert "Belum ada data raport" jika backend gagal mengembalikan data dari Sheet
     if (!raportGlobal || !Array.isArray(raportGlobal) || raportGlobal.length === 0) {
        return Swal.fire('Info', 'Belum ada data raport. Pastikan Sheet DataRaport sudah terisi.', 'info');
     }
@@ -173,12 +191,39 @@ const { data: raportGlobal } = useSWR(['getRaportGlobal', { tahun: filterTahunGl
               </select>
             </div>
 
+            {/* AREA DRAG AND DROP */}
             <div>
-              <label className="block text-sm font-semibold text-slate-600 mb-1">Pilih File (Auto-Compress)</label>
-              <input type="file" accept=".pdf, image/*" className="w-full border p-2 rounded-lg bg-slate-50 text-sm" onChange={e => setFile(e.target.files[0])} required />
+              <label className="block text-sm font-semibold text-slate-600 mb-1">Upload File Raport</label>
+              <div 
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-colors ${
+                  isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300 bg-slate-50 hover:bg-slate-100'
+                }`}
+              >
+                <input 
+                  type="file" 
+                  id="fileUploadZone"
+                  accept=".pdf, image/*" 
+                  className="hidden" 
+                  onChange={e => setFile(e.target.files[0])} 
+                />
+                <label htmlFor="fileUploadZone" className="cursor-pointer flex flex-col items-center justify-center w-full text-center">
+                  {/* Ikon Awan (Pastikan Anda menggunakan font-awesome atau library icon lain yang sudah terinstall) */}
+                  <i className={`fas fa-cloud-upload-alt text-4xl mb-3 ${file ? 'text-green-500' : (isDragging ? 'text-blue-500' : 'text-slate-400')}`}></i>
+                  
+                  <span className="font-semibold text-slate-600 text-sm">
+                    {file ? file.name : "Tarik & Lepas file di sini, atau Klik"}
+                  </span>
+                  
+                  {!file && <span className="text-xs text-slate-500 mt-1">Maks. 2.5MB (PDF/Gambar)</span>}
+                </label>
+              </div>
             </div>
+
             <button type="submit" className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold shadow-md hover:bg-blue-700 mt-4 flex justify-center gap-2">
-               <i className="fas fa-upload"></i> Simpan
+               <i className="fas fa-save"></i> Simpan Raport
             </button>
           </form>
         </div>
