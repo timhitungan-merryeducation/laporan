@@ -11,9 +11,14 @@ export const fetcher = async (action, params = {}) => {
 
 export const poster = async (action, data) => {
   const res = await axios.post('/api/proxy', { action, data });
-  // PERBAIKAN: Lempar error jika gagal, agar Swal.fire di raport.js menangkapnya
+  
+  // Tangkap error dari Vercel / Apps Script
   if (res.data.status === "error") {
     throw new Error(res.data.message); 
+  }
+  // Tangkap error spesifik dari Spreadsheet
+  if (res.data.data && res.data.data.error) {
+    throw new Error(res.data.data.error);
   }
   return res.data.data;
 };
