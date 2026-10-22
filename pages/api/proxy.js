@@ -1,32 +1,28 @@
 import axios from 'axios';
 
+// Masukkan URL Deployment Baru Anda di sini
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxecjzyeg9InFUOHgKVa2Zur9GS94CXEwWIoHdkp5xJir3gRnfRQsGDEXfWIdUlm-hCUg/exec';
+
 export default async function handler(req, res) {
-  const API_URL = process.env.NEXT_PUBLIC_APPS_SCRIPT_URL;
-  
-  if (!API_URL) {
-    return res.status(500).json({ status: 'error', message: 'API URL belum disetting di Vercel' });
-  }
-
-  // Hapus parameter anti-cache (t) sebelum dikirim ke Google
-  const queryParams = { ...req.query };
-  delete queryParams.t;
-
   try {
     if (req.method === 'GET') {
-      const response = await axios.get(API_URL, { params: queryParams });
-      // Matikan cache di sisi HTTP Response Vercel
-      res.setHeader('Cache-Control', 'no-store, max-age=0');
-      return res.status(200).json(response.data);
-    } 
-    
-    if (req.method === 'POST') {
-      const response = await axios.post(API_URL, JSON.stringify(req.body), {
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+      // Meneruskan request GET beserta parameternya ke Google Apps Script
+      const response = await axios.get(SCRIPT_URL, { params: req.query });
+      res.status(200).json(response.data);
+    } else if (req.method === 'POST') {
+      // Meneruskan request POST (termasuk action dan payload data) ke Google Apps Script
+      // Next.js secara otomatis mem-parsing req.body sebagai JSON
+      const response = await axios.post(SCRIPT_URL, req.body, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
-      res.setHeader('Cache-Control', 'no-store, max-age=0');
-      return res.status(200).json(response.data);
+      res.status(200).json(response.data);
+    } else {
+      res.status(405).json({ message: 'Method Not Allowed' });
     }
   } catch (error) {
-    return res.status(500).json({ status: 'error', message: error.message });
+    console.error("API Proxy Error:", error.message);
+    res.status(500).json({ status: 'error', message: 'Gagal terhubung ke server backend.' });
   }
 }
