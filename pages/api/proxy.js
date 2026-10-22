@@ -2,7 +2,7 @@ import axios from 'axios';
 
 export default async function handler(req, res) {
   // Mengambil URL dari Environment Variable Vercel (atau fallback ke URL hardcode)
-  const SCRIPT_URL = process.env.NEXT_PUBLIC_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbx5UcOxFkCKvEcXI2Nb1e37Fqeuphf9rNM5dgxHybFS4sh8oqWvy3qSaiGAJVKnAeqB-g/exec';
+  const SCRIPT_URL = process.env.NEXT_PUBLIC_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxm-YEEqqg0ecGKyP831OcmtU9UjPXNG9Fjm9Lk8NkUS5ARWedoGgsuY9zxovRxSAju/exec';
 
   try {
     if (req.method === 'GET') {
