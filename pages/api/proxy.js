@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // HAPUS SCRIPT_URL LAMA, LALU PASTE URL BARU ANDA DI DALAM TANDA KUTIP DI BAWAH INI:
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzWHgPUDTzDFC0gqXasAaQB48BmKbTwPrHjQnm_2Y4bA3li-0iNz3nQhD5XDAns7OwPRg/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwJTbQqMgYLBZo34f0PbnP2MD3xcbUk-wl1xXV8L4IqAdOuKU2GS9jUR5dcD-iW657tYQ/exec';
 
 export default async function handler(req, res) {
   try {
