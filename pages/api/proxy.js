@@ -6,11 +6,13 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
       const response = await axios.post(SCRIPT_URL, req.body, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' }
       });
+      return res.status(200).json(response.data);
+    }
 
+    if (req.method === 'GET') {
+      const response = await axios.get(SCRIPT_URL, { params: req.query });
       return res.status(200).json(response.data);
     }
 
