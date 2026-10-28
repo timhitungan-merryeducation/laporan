@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwJTbQqMgYLBZo34f0PbnP2MD3xcbUk-wl1xXV8L4IqAdOuKU2GS9jUR5dcD-iW657tYQ/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzVYB4Kk-1IQpo7R2L0aidMA-pvrtioSXLA-9Mof9flupDpUrdWgWByekXJSjWKCI8WGA/exec';
 
 export default async function handler(req, res) {
   try {
