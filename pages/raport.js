@@ -6,6 +6,20 @@ import { poster, fetcher } from '../utils/api';
 import { downloadMergedRaport } from '../utils/pdfProcessor';
 import Swal from 'sweetalert2';
 
+const sanitizeFolderPart = (value = '') => {
+  return String(value)
+    .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const buildRaportFolderPath = ({ namaSiswa, jenisRaport, tahunPelajaran }) => {
+  const year = sanitizeFolderPart(tahunPelajaran || 'Umum');
+  const type = sanitizeFolderPart(jenisRaport || 'Raport');
+  const student = sanitizeFolderPart(namaSiswa || 'Siswa');
+  return `Raport/${year}/${type}/${student}`;
+};
+
 const compressImage = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -77,12 +91,27 @@ export default function RaportManager() {
     if (!file || !namaSiswa) return Swal.fire('Oops!', 'Siswa & File wajib diisi.', 'warning');
     if (file.type === 'application/pdf' && file.size > 2.5 * 1024 * 1024) return Swal.fire('Gagal', 'PDF maks 2.5MB. Silakan kompres.', 'error');
 
+    const folderPath = buildRaportFolderPath({ namaSiswa, jenisRaport, tahunPelajaran });
+    const folderName = folderPath.split('/').filter(Boolean).pop();
+
     Swal.fire({ title: 'Memproses...', text: 'Mengunggah file ke Drive dan mencatat ke Sheet', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     
     try {
       const base64Data = file.type.startsWith('image/') ? await compressImage(file) : await new Promise(r => { const f = new FileReader(); f.onload = e => r(e.target.result); f.readAsDataURL(file); });
       
-      await poster('uploadRaport', { namaSiswa, jenisRaport, tahunPelajaran, kelas: "-", fileName: file.name, base64: base64Data });
+      await poster('uploadRaport', {
+        namaSiswa,
+        jenisRaport,
+        tahunPelajaran,
+        kelas: '-',
+        fileName: file.name,
+        folderName,
+        folderPath,
+        folderTarget: folderPath,
+        base64: base64Data,
+        fileType: file.type,
+        source: 'raport'
+      });
       
       Swal.fire('Sukses!', `Raport ${namaSiswa} berhasil disimpan.`, 'success');
       setFile(null); 
@@ -90,7 +119,6 @@ export default function RaportManager() {
       setNamaSiswa('');
       mutate();
     } catch (err) { 
-      // MUNCULKAN ERROR ASLINYA DI SINI, JANGAN PAKAI TEKS STATIS
       Swal.fire('Upload Bermasalah', err.message || 'Terjadi kesalahan sistem yang tidak diketahui.', 'error'); 
     }
   };
@@ -192,7 +220,6 @@ export default function RaportManager() {
               </select>
             </div>
 
-            {/* AREA DRAG AND DROP */}
             <div>
               <label className="block text-sm font-semibold text-slate-600 mb-1">Upload File Raport</label>
               <div 
@@ -211,7 +238,6 @@ export default function RaportManager() {
                   onChange={e => setFile(e.target.files[0])} 
                 />
                 <label htmlFor="fileUploadZone" className="cursor-pointer flex flex-col items-center justify-center w-full text-center">
-                  {/* Ikon Awan (Pastikan Anda menggunakan font-awesome atau library icon lain yang sudah terinstall) */}
                   <i className={`fas fa-cloud-upload-alt text-4xl mb-3 ${file ? 'text-green-500' : (isDragging ? 'text-blue-500' : 'text-slate-400')}`}></i>
                   
                   <span className="font-semibold text-slate-600 text-sm">
@@ -262,7 +288,7 @@ export default function RaportManager() {
                     {raportSiswa.map((r, i) => (
                       <tr key={i} className="hover:bg-blue-50/50">
                         <td className="p-3 border-b font-bold">{r.tahun}</td><td className="p-3 border-b text-slate-700">{r.jenis}</td>
-                        <td className="p-3 border-b"><a href={r.url} target="_blank" rel="noreferrer" className="bg-slate-100 text-blue-600 px-3 py-1 rounded border hover:bg-blue-600 hover:text-white font-bold text-xs">Lihat File</a></td>
+                        <td className="p-3 border-b"><a href={r.url} target="_blank" rel="noreferrer" className="bg-slate-100 text-blue-600 px-3 py-1 rounded border hover:bg-blue-600 hover:text-white">Buka</a></td>
                       </tr>
                     ))}
                   </tbody>
