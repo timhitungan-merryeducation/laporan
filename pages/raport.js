@@ -58,14 +58,21 @@ export default function RaportManager() {
     setIsUploading(true);
     Swal.fire({ title: 'Memproses...', text: 'Mengunggah & Mengompresi file', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     
-    try {
+try {
       const base64Data = file.type.startsWith('image/') ? await compressImage(file) : await new Promise(r => { const f = new FileReader(); f.onload = e => r(e.target.result); f.readAsDataURL(file); });
-      await poster('uploadRaport', { namaSiswa, jenisRaport, tahunPelajaran, kelas: "-", fileName: file.name, base64: base64Data });
+      
+      const response = await poster('uploadRaport', { namaSiswa, jenisRaport, tahunPelajaran, kelas: "-", fileName: file.name, base64: base64Data });
+      
+      // Deteksi jika Apps script sengaja melempar error string
+      if (response && response.status === 'error') throw new Error(response.message);
+
       Swal.fire('Sukses!', `Raport ${namaSiswa} tersimpan di folder Drive.`, 'success');
       setFile(null); 
       mutate();
     } catch (err) { 
-      Swal.fire('Error', 'Gagal upload. Pastikan Anda sudah Deploy Apps Script baru.', 'error'); 
+      // KINI AKAN MENAMPILKAN ERROR ASLI DARI SERVER, BUKAN ERROR HARDCODE
+      const errorMsg = err.response?.data?.message || err.message || 'Terjadi kesalahan sistem';
+      Swal.fire('Error Detail', `Gagal upload: ${errorMsg}`, 'error'); 
     }
     setIsUploading(false);
   };
