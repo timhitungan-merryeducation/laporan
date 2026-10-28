@@ -30,6 +30,8 @@ export default function RaportManager() {
   const [file, setFile] = useState(null);
   const [namaSiswa, setNamaSiswa] = useState('');
   const [searchName, setSearchName] = useState('');
+  
+  // VARIABLE INI YANG SEBELUMNYA HILANG DAN MEMBUAT ERROR VERCEL:
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   
@@ -42,7 +44,6 @@ export default function RaportManager() {
   const { data: listSiswa } = useSWR('getSiswaDashboardStats', fetcher);
   const { data: raportSiswa, mutate } = useSWR(namaSiswa ? ['getRaport', { namaSiswa }] : null, ([action, params]) => fetcher(action, params));
   
-  // Tarik data global khusus untuk PDF Merger
   const { data: raportGlobal } = useSWR(['getRaportGlobal', { tahun: filterTahunGlobal, jenis: filterJenisGlobal }], ([action, params]) => fetcher(action, params));
 
   const filteredStudents = useMemo(() => {
@@ -56,21 +57,18 @@ export default function RaportManager() {
     if (file.type === 'application/pdf' && file.size > 2.5 * 1024 * 1024) return Swal.fire('Gagal', 'PDF lebih dari 2.5MB. Silakan kompres.', 'error');
 
     setIsUploading(true);
-    Swal.fire({ title: 'Memproses...', text: 'Mengunggah & Mengompresi file', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    Swal.fire({ title: 'Memproses...', text: 'Mengunggah file', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     
-try {
+    try {
       const base64Data = file.type.startsWith('image/') ? await compressImage(file) : await new Promise(r => { const f = new FileReader(); f.onload = e => r(e.target.result); f.readAsDataURL(file); });
-      
       const response = await poster('uploadRaport', { namaSiswa, jenisRaport, tahunPelajaran, kelas: "-", fileName: file.name, base64: base64Data });
       
-      // Deteksi jika Apps script sengaja melempar error string
       if (response && response.status === 'error') throw new Error(response.message);
 
       Swal.fire('Sukses!', `Raport ${namaSiswa} tersimpan di folder Drive.`, 'success');
       setFile(null); 
       mutate();
     } catch (err) { 
-      // KINI AKAN MENAMPILKAN ERROR ASLI DARI SERVER, BUKAN ERROR HARDCODE
       const errorMsg = err.response?.data?.message || err.message || 'Terjadi kesalahan sistem';
       Swal.fire('Error Detail', `Gagal upload: ${errorMsg}`, 'error'); 
     }
@@ -162,7 +160,7 @@ try {
                   {raportSiswa === undefined ? (<tr><td colSpan="3" className="text-center p-6"><Loader /></td></tr>) : raportSiswa.length > 0 ? raportSiswa.map((r, i) => (
                     <tr key={i} className="hover:bg-blue-50/50">
                       <td className="p-3 border-b font-bold">{r.tahun}</td><td className="p-3 border-b text-slate-700">{r.jenis}</td>
-                      <td className="p-3 border-b"><a href={r.url} target="_blank" className="bg-slate-100 text-blue-600 px-3 py-1 rounded border hover:bg-blue-600 hover:text-white font-bold text-xs">Lihat File</a></td>
+                      <td className="p-3 border-b"><a href={r.url} target="_blank" rel="noopener noreferrer" className="bg-slate-100 text-blue-600 px-3 py-1 rounded border hover:bg-blue-600 hover:text-white font-bold text-xs">Lihat File</a></td>
                     </tr>
                   )) : <tr><td colSpan="3" className="p-8 text-center text-slate-400">Belum ada arsip untuk siswa ini.</td></tr>}
                 </tbody>
