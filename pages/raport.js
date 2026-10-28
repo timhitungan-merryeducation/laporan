@@ -27,20 +27,22 @@ const compressImage = (file) => {
 };
 
 export default function RaportManager() {
-  const [showSuggestions, setShowSuggestions] = useState(false); 
   const [file, setFile] = useState(null);
-  const [isDragging, setIsDragging] = useState(false); // State Drag & Drop
   const [namaSiswa, setNamaSiswa] = useState('');
   const [searchName, setSearchName] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   
-  const [jenisRaport, setJenisRaport] = useState('Sisipan Ganjil');
+  const [jenisRaport, setJenisRaport] = useState('Raport Sisipan Ganjil');
   const [tahunPelajaran, setTahunPelajaran] = useState('2026/2027');
   
   const [filterTahunGlobal, setFilterTahunGlobal] = useState('2026/2027');
-  const [filterJenisGlobal, setFilterJenisGlobal] = useState('Sisipan Ganjil');
+  const [filterJenisGlobal, setFilterJenisGlobal] = useState('Raport Sisipan Ganjil');
 
-  const { data: listSiswa, isLoading: isListSiswaLoading } = useSWR('getSiswaDashboardStats', fetcher);
+  const { data: listSiswa } = useSWR('getSiswaDashboardStats', fetcher);
   const { data: raportSiswa, mutate } = useSWR(namaSiswa ? ['getRaport', { namaSiswa }] : null, ([action, params]) => fetcher(action, params));
+  
+  // Tarik data global khusus untuk PDF Merger
   const { data: raportGlobal } = useSWR(['getRaportGlobal', { tahun: filterTahunGlobal, jenis: filterJenisGlobal }], ([action, params]) => fetcher(action, params));
 
   const filteredStudents = useMemo(() => {
@@ -48,88 +50,45 @@ export default function RaportManager() {
     return listSiswa.filter(s => s.nama && s.nama.toLowerCase().includes(searchName.toLowerCase())).slice(0, 5);
   }, [listSiswa, searchName]);
 
-  // Event Handlers untuk Drag and Drop
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.type === 'application/pdf' || droppedFile.type.startsWith('image/')) {
-        setFile(droppedFile);
-      } else {
-        Swal.fire('Format Salah', 'Hanya menerima file PDF atau Gambar.', 'error');
-      }
-    }
-  };
-
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!file || !namaSiswa) return Swal.fire('Oops!', 'Siswa & File wajib diisi.', 'warning');
-    if (file.type === 'application/pdf' && file.size > 2.5 * 1024 * 1024) return Swal.fire('Gagal', 'PDF maks 2.5MB. Silakan kompres.', 'error');
+    if (file.type === 'application/pdf' && file.size > 2.5 * 1024 * 1024) return Swal.fire('Gagal', 'PDF lebih dari 2.5MB. Silakan kompres.', 'error');
 
-    Swal.fire({ title: 'Memproses...', text: 'Mengunggah file ke Drive dan mencatat ke Sheet', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    setIsUploading(true);
+    Swal.fire({ title: 'Memproses...', text: 'Mengunggah & Mengompresi file', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     
     try {
       const base64Data = file.type.startsWith('image/') ? await compressImage(file) : await new Promise(r => { const f = new FileReader(); f.onload = e => r(e.target.result); f.readAsDataURL(file); });
-      
       await poster('uploadRaport', { namaSiswa, jenisRaport, tahunPelajaran, kelas: "-", fileName: file.name, base64: base64Data });
-      
-      Swal.fire('Sukses!', `Raport ${namaSiswa} berhasil disimpan.`, 'success');
+      Swal.fire('Sukses!', `Raport ${namaSiswa} tersimpan di folder Drive.`, 'success');
       setFile(null); 
-      setSearchName('');
-      setNamaSiswa('');
       mutate();
     } catch (err) { 
-      // MUNCULKAN ERROR ASLINYA DI SINI, JANGAN PAKAI TEKS STATIS
-      Swal.fire('Upload Bermasalah', err.message || 'Terjadi kesalahan sistem yang tidak diketahui.', 'error'); 
+      Swal.fire('Error', 'Gagal upload. Pastikan Anda sudah Deploy Apps Script baru.', 'error'); 
     }
+    setIsUploading(false);
   };
 
   const handleDownloadGlobal = async () => {
-    if (!raportGlobal || !Array.isArray(raportGlobal) || raportGlobal.length === 0) {
-       return Swal.fire('Info', 'Belum ada data raport. Pastikan Sheet DataRaport sudah terisi.', 'info');
-    }
+    if (!raportGlobal || raportGlobal.length === 0) return Swal.fire('Info', `Belum ada ${filterJenisGlobal} yang diunggah untuk tahun ${filterTahunGlobal}.`, 'info');
     
-    const targetPdfs = raportGlobal.filter(r => r.jenis === filterJenisGlobal && r.tahun === filterTahunGlobal).map(r => r.url);
-    if (targetPdfs.length === 0) return Swal.fire('Info', `Tidak ada Raport ${filterJenisGlobal} untuk tahun ${filterTahunGlobal}`, 'info');
-
+    const targetPdfs = raportGlobal.map(r => r.url);
     Swal.fire({ title: 'Menyiapkan PDF', text: `Menggabungkan ${targetPdfs.length} file...`, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     try {
-      await downloadMergedRaport(targetPdfs, `Global_${filterJenisGlobal.replace(/ /g, '_')}_${filterTahunGlobal.replace(/\//g, '-')}`);
+      const namaFile = `Global_${filterJenisGlobal.replace(/ /g, '_')}_${filterTahunGlobal.replace(/\//g, '-')}`;
+      await downloadMergedRaport(targetPdfs, namaFile);
       Swal.close();
     } catch (e) { 
-      Swal.fire('Error', 'Gagal mengunduh file.', 'error'); 
+      Swal.fire('Error', 'Gagal mengunduh file. File mungkin tidak bisa diakses publik.', 'error'); 
     }
   };
 
-  if (isListSiswaLoading) {
-    return (
-      <Layout>
-        <div className="flex flex-col items-center justify-center py-20">
-          <Loader /> 
-          <p className="mt-4 text-slate-500 font-medium">Memuat data dari sistem, mohon tunggu...</p>
-        </div>
-      </Layout>
-    );
-  }
-
   return (
     <Layout>
-      <div className="mb-6 border-b pb-4 flex justify-between items-end">
-        <div>
-          <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Manajemen Raport & Dokumen</h2>
-          <p className="text-slate-500 mt-1">Sistem arsip Drive otomatis berbasis Tahun dan Jenis Raport.</p>
-        </div>
+      <div className="mb-6 border-b pb-4">
+        <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Manajemen Raport & Dokumen</h2>
+        <p className="text-slate-500 mt-1">Sistem arsip Drive otomatis berbasis Tahun dan Jenis Raport.</p>
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -138,136 +97,69 @@ export default function RaportManager() {
           <form onSubmit={handleUpload} className="space-y-4">
             <div className="relative">
               <label className="block text-sm font-semibold text-slate-600 mb-1">Cari Nama Siswa</label>
-              <input 
-                type="text" 
-                placeholder="Ketik nama..." 
-                className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" 
-                value={searchName} 
-                onChange={(e) => { 
-                  setSearchName(e.target.value); 
-                  setNamaSiswa(''); 
-                  setShowSuggestions(true); 
-                }} 
-                required 
-              />
+              <input type="text" placeholder="Ketik nama..." className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" value={searchName} onChange={(e) => { setSearchName(e.target.value); setNamaSiswa(''); setShowSuggestions(true); }} required />
               {showSuggestions && searchName && (
                 <ul className="absolute z-10 w-full bg-white border rounded-lg shadow-xl mt-1 max-h-48 overflow-y-auto">
-                  {filteredStudents.map((s, i) => (
-                    <li 
-                      key={i} 
-                      className="p-3 hover:bg-blue-50 cursor-pointer text-sm border-b" 
-                      onClick={() => { 
-                        setNamaSiswa(s.nama); 
-                        setSearchName(s.nama); 
-                        setShowSuggestions(false); 
-                      }}
-                    >
-                      <span className="font-bold">{s.nama}</span>
+                  {filteredStudents.length > 0 ? filteredStudents.map((s, i) => (
+                    <li key={i} className="p-3 hover:bg-blue-50 cursor-pointer text-sm border-b" onClick={() => { setNamaSiswa(s.nama); setSearchName(s.nama); setShowSuggestions(false); }}>
+                      <span className="font-bold text-slate-800">{s.nama}</span> <span className="text-xs text-slate-500">({s.sekolah})</span>
                     </li>
-                  ))}
-                  {filteredStudents.length === 0 && <li className="p-3 text-sm text-slate-500">Siswa tidak ditemukan</li>}
+                  )) : <li className="p-3 text-sm text-slate-400 text-center">Tidak ditemukan</li>}
                 </ul>
               )}
             </div>
-            
             <div>
               <label className="block text-sm font-semibold text-slate-600 mb-1">Tahun Pelajaran</label>
               <select className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" value={tahunPelajaran} onChange={e => setTahunPelajaran(e.target.value)}>
-                <option>2025/2026</option>
-                <option>2026/2027</option>
+                <option>2025/2026</option><option>2026/2027</option><option>2027/2028</option>
               </select>
             </div>
-            
             <div>
               <label className="block text-sm font-semibold text-slate-600 mb-1">Jenis Raport</label>
-              <select 
-                className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" 
-                value={jenisRaport} 
-                onChange={e => setJenisRaport(e.target.value)}
-              >
-                <option value="Sisipan Ganjil">Sisipan Ganjil</option>
-                <option value="Raport SAS (Semester Ganjil)">Raport SAS (Semester Ganjil)</option>
-                <option value="Sisipan Genap">Sisipan Genap</option>
-                <option value="Raport SAT (Semester Genap)">Raport SAT (Semester Genap)</option>
+              <select className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" value={jenisRaport} onChange={e => setJenisRaport(e.target.value)}>
+                <option>Raport Sisipan Ganjil</option><option>Raport SAS (Semester Ganjil)</option>
+                <option>Raport Sisipan Genap</option><option>Raport SAT (Semester Genap)</option>
               </select>
             </div>
-
-            {/* AREA DRAG AND DROP */}
             <div>
-              <label className="block text-sm font-semibold text-slate-600 mb-1">Upload File Raport</label>
-              <div 
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-colors ${
-                  isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300 bg-slate-50 hover:bg-slate-100'
-                }`}
-              >
-                <input 
-                  type="file" 
-                  id="fileUploadZone"
-                  accept=".pdf, image/*" 
-                  className="hidden" 
-                  onChange={e => setFile(e.target.files[0])} 
-                />
-                <label htmlFor="fileUploadZone" className="cursor-pointer flex flex-col items-center justify-center w-full text-center">
-                  {/* Ikon Awan (Pastikan Anda menggunakan font-awesome atau library icon lain yang sudah terinstall) */}
-                  <i className={`fas fa-cloud-upload-alt text-4xl mb-3 ${file ? 'text-green-500' : (isDragging ? 'text-blue-500' : 'text-slate-400')}`}></i>
-                  
-                  <span className="font-semibold text-slate-600 text-sm">
-                    {file ? file.name : "Tarik & Lepas file di sini, atau Klik"}
-                  </span>
-                  
-                  {!file && <span className="text-xs text-slate-500 mt-1">Maks. 2.5MB (PDF/Gambar)</span>}
-                </label>
-              </div>
+              <label className="block text-sm font-semibold text-slate-600 mb-1">Pilih File (Otomatis dinamai)</label>
+              <input type="file" accept=".pdf, image/*" className="w-full border p-2 rounded-lg bg-slate-50 text-sm" onChange={e => setFile(e.target.files[0])} required />
             </div>
-
-            <button type="submit" className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold shadow-md hover:bg-blue-700 mt-4 flex justify-center gap-2">
-               <i className="fas fa-save"></i> Simpan Raport
+            <button type="submit" disabled={isUploading || !namaSiswa} className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold shadow-md hover:bg-blue-700 disabled:opacity-50 mt-4 transition-colors">
+               <i className="fas fa-upload mr-2"></i> {isUploading ? 'Menyimpan...' : 'Simpan ke Drive'}
             </button>
           </form>
         </div>
 
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-slate-800 p-6 rounded-xl shadow-md text-white flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="bg-slate-800 p-6 rounded-xl shadow-md text-white flex flex-col xl:flex-row justify-between items-center gap-4">
             <div>
               <h3 className="font-bold text-lg text-amber-400">Unduh Gabungan (Global)</h3>
-              <p className="text-sm text-slate-300">Gabungkan PDF seluruh siswa dalam 1 file berdasarkan filter.</p>
+              <p className="text-sm text-slate-300">Gabungkan PDF seluruh siswa dalam 1 file.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-               <select className="border-none p-2 rounded bg-slate-700 text-sm outline-none" value={filterTahunGlobal} onChange={e => setFilterTahunGlobal(e.target.value)}>
-                 <option>2025/2026</option><option>2026/2027</option>
-               </select>
-               <select className="border-none p-2 rounded bg-slate-700 text-sm outline-none" value={filterJenisGlobal} onChange={e => setFilterJenisGlobal(e.target.value)}>
-                 <option>Sisipan Ganjil</option><option>Raport SAS (Semester Ganjil)</option><option>Sisipan Genap</option><option>Raport SAT (Semester Genap)</option>
-               </select>
-               <button onClick={handleDownloadGlobal} className="bg-amber-500 px-4 py-2 rounded font-bold hover:bg-amber-600 shadow text-slate-900 transition">
-                 <i className="fas fa-file-pdf"></i> Unduh
-               </button>
+            <div className="flex flex-wrap gap-2 justify-center">
+               <select className="border-none p-2 rounded bg-slate-700 text-sm outline-none" value={filterTahunGlobal} onChange={e => setFilterTahunGlobal(e.target.value)}><option>2025/2026</option><option>2026/2027</option></select>
+               <select className="border-none p-2 rounded bg-slate-700 text-sm outline-none" value={filterJenisGlobal} onChange={e => setFilterJenisGlobal(e.target.value)}><option>Raport Sisipan Ganjil</option><option>Raport SAS (Semester Ganjil)</option><option>Raport Sisipan Genap</option><option>Raport SAT (Semester Genap)</option></select>
+               <button onClick={handleDownloadGlobal} className="bg-amber-500 px-4 py-2 rounded font-bold hover:bg-amber-600 shadow text-slate-900"><i className="fas fa-file-pdf"></i> Unduh</button>
             </div>
           </div>
 
           {namaSiswa ? (
             <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100">
               <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-2">Arsip Pribadi: <span className="text-blue-600">{namaSiswa}</span></h3>
-              {(!raportSiswa || raportSiswa.length === 0) ? (
-                 <p className="text-slate-500 text-sm">Belum ada arsip untuk siswa ini.</p>
-              ) : (
-                <table className="w-full text-left text-sm border-collapse">
-                  <thead className="bg-slate-50 text-slate-600">
-                    <tr><th className="p-3 border-b">Tahun</th><th className="p-3 border-b">Jenis</th><th className="p-3 border-b">Aksi</th></tr>
-                  </thead>
-                  <tbody>
-                    {raportSiswa.map((r, i) => (
-                      <tr key={i} className="hover:bg-blue-50/50">
-                        <td className="p-3 border-b font-bold">{r.tahun}</td><td className="p-3 border-b text-slate-700">{r.jenis}</td>
-                        <td className="p-3 border-b"><a href={r.url} target="_blank" rel="noreferrer" className="bg-slate-100 text-blue-600 px-3 py-1 rounded border hover:bg-blue-600 hover:text-white font-bold text-xs">Lihat File</a></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+              <table className="w-full text-left text-sm border-collapse">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr><th className="p-3 border-b">Tahun</th><th className="p-3 border-b">Jenis</th><th className="p-3 border-b">Aksi</th></tr>
+                </thead>
+                <tbody>
+                  {raportSiswa === undefined ? (<tr><td colSpan="3" className="text-center p-6"><Loader /></td></tr>) : raportSiswa.length > 0 ? raportSiswa.map((r, i) => (
+                    <tr key={i} className="hover:bg-blue-50/50">
+                      <td className="p-3 border-b font-bold">{r.tahun}</td><td className="p-3 border-b text-slate-700">{r.jenis}</td>
+                      <td className="p-3 border-b"><a href={r.url} target="_blank" className="bg-slate-100 text-blue-600 px-3 py-1 rounded border hover:bg-blue-600 hover:text-white font-bold text-xs">Lihat File</a></td>
+                    </tr>
+                  )) : <tr><td colSpan="3" className="p-8 text-center text-slate-400">Belum ada arsip untuk siswa ini.</td></tr>}
+                </tbody>
+              </table>
             </div>
           ) : (
             <div className="bg-white p-10 rounded-xl shadow-md text-center border-dashed border-2 border-slate-200">
