@@ -1,24 +1,21 @@
+// utils/api.js
 import axios from 'axios';
 
+// Fetcher untuk baca data dari Turso
 export const fetcher = async (action, params = {}) => {
-  const res = await axios.get('/api/proxy', { 
-    params: { action, t: Date.now(), ...params } 
-  });
-  // Tangkap pesan error jika code.gs mengembalikan status error
-  if (res.data.status === "error") throw new Error(res.data.message);
-  return res.data.data;
+  const query = new URLSearchParams({ action, ...params }).toString();
+  const response = await axios.get(`/api/db?${query}`);
+  return response.data.data;
 };
 
+// Poster untuk kirim data ke Turso
 export const poster = async (action, data) => {
-  const res = await axios.post('/api/proxy', { action, data });
-  
-  // Tangkap error dari Vercel / Apps Script
-  if (res.data.status === "error") {
-    throw new Error(res.data.message); 
-  }
-  // Tangkap error spesifik dari Spreadsheet
-  if (res.data.data && res.data.data.error) {
-    throw new Error(res.data.data.error);
-  }
-  return res.data.data;
+  const response = await axios.post('/api/db', { action, ...data });
+  return response.data;
+};
+
+// Poster Khusus untuk File (Karena File harus mampir ke Drive lewat proxy)
+export const uploadFileToDrive = async (action, data) => {
+  const response = await axios.post('/api/proxy', { action, data });
+  return response.data;
 };
