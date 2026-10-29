@@ -31,7 +31,7 @@ export default function RaportManager() {
   const [namaSiswa, setNamaSiswa] = useState('');
   const [searchName, setSearchName] = useState('');
   
-  // VARIABLE INI YANG SEBELUMNYA HILANG DAN MEMBUAT ERROR VERCEL:
+  // VARIABLE INI HARUS ADA AGAR BUILD NEXT.JS SUKSES
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   
@@ -57,7 +57,7 @@ export default function RaportManager() {
     if (file.type === 'application/pdf' && file.size > 2.5 * 1024 * 1024) return Swal.fire('Gagal', 'PDF lebih dari 2.5MB. Silakan kompres.', 'error');
 
     setIsUploading(true);
-    Swal.fire({ title: 'Memproses...', text: 'Mengunggah file', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    Swal.fire({ title: 'Memproses...', text: 'Mengunggah file ke sistem', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     
     try {
       const base64Data = file.type.startsWith('image/') ? await compressImage(file) : await new Promise(r => { const f = new FileReader(); f.onload = e => r(e.target.result); f.readAsDataURL(file); });
@@ -65,12 +65,12 @@ export default function RaportManager() {
       
       if (response && response.status === 'error') throw new Error(response.message);
 
-      Swal.fire('Sukses!', `Raport ${namaSiswa} tersimpan di folder Drive.`, 'success');
+      Swal.fire('Sukses!', `Raport ${namaSiswa} tersimpan di folder Drive dan link terekam di sistem.`, 'success');
       setFile(null); 
       mutate();
     } catch (err) { 
       const errorMsg = err.response?.data?.message || err.message || 'Terjadi kesalahan sistem';
-      Swal.fire('Error Detail', `Gagal upload: ${errorMsg}`, 'error'); 
+      Swal.fire('Error Detail', `Gagal upload: ${errorMsg}. Pastikan Apps Script telah di-deploy ulang dan diberi izin Drive.`, 'error'); 
     }
     setIsUploading(false);
   };
@@ -131,7 +131,7 @@ export default function RaportManager() {
               <input type="file" accept=".pdf, image/*" className="w-full border p-2 rounded-lg bg-slate-50 text-sm" onChange={e => setFile(e.target.files[0])} required />
             </div>
             <button type="submit" disabled={isUploading || !namaSiswa} className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold shadow-md hover:bg-blue-700 disabled:opacity-50 mt-4 transition-colors">
-               <i className="fas fa-upload mr-2"></i> {isUploading ? 'Menyimpan...' : 'Simpan ke Drive'}
+               <i className="fas fa-upload mr-2"></i> {isUploading ? 'Menyimpan...' : 'Simpan ke Drive & DB'}
             </button>
           </form>
         </div>
