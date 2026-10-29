@@ -10,9 +10,9 @@ const compressImage = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = (event) => {
+    reader.onload = (e) => {
       const img = new Image();
-      img.src = event.target.result;
+      img.src = e.target.result;
       img.onload = () => {
         const canvas = document.createElement('canvas');
         let w = img.width, h = img.height;
@@ -30,21 +30,27 @@ export default function RaportManager() {
   const [file, setFile] = useState(null);
   const [namaSiswa, setNamaSiswa] = useState('');
   const [searchName, setSearchName] = useState('');
-  
-  // VARIABLE INI HARUS ADA AGAR BUILD NEXT.JS SUKSES
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   
   const [jenisRaport, setJenisRaport] = useState('Raport Sisipan Ganjil');
   const [tahunPelajaran, setTahunPelajaran] = useState('2026/2027');
-  
   const [filterTahunGlobal, setFilterTahunGlobal] = useState('2026/2027');
   const [filterJenisGlobal, setFilterJenisGlobal] = useState('Raport Sisipan Ganjil');
 
+  // Fetch dari Spreadsheet untuk daftar siswa
   const { data: listSiswa } = useSWR('getSiswaDashboardStats', fetcher);
-  const { data: raportSiswa, mutate } = useSWR(namaSiswa ? ['getRaport', { namaSiswa }] : null, ([action, params]) => fetcher(action, params));
   
-  const { data: raportGlobal } = useSWR(['getRaportGlobal', { tahun: filterTahunGlobal, jenis: filterJenisGlobal }], ([action, params]) => fetcher(action, params));
+  // Fetch dari TURSO untuk tabel arsip
+  const { data: raportSiswa, mutate } = useSWR(
+    namaSiswa ? `/api/db-raport?action=getIndividu&nama=${encodeURIComponent(namaSiswa)}` : null, 
+    async (url) => { const res = await fetch(url); const json = await res.json(); return json.data; }
+  );
+  
+  const { data: raportGlobal } = useSWR(
+    `/api/db-raport?action=getGlobal&tahun=${encodeURIComponent(filterTahunGlobal)}&jenis=${encodeURIComponent(filterJenisGlobal)}`, 
+    async (url) => { const res = await fetch(url); const json = await res.json(); return json.data; }
+  );
 
   const filteredStudents = useMemo(() => {
     if (!listSiswa || !searchName || !Array.isArray(listSiswa)) return [];
@@ -54,32 +60,46 @@ export default function RaportManager() {
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!file || !namaSiswa) return Swal.fire('Oops!', 'Siswa & File wajib diisi.', 'warning');
-    if (file.type === 'application/pdf' && file.size > 2.5 * 1024 * 1024) return Swal.fire('Gagal', 'PDF lebih dari 2.5MB. Silakan kompres.', 'error');
 
     setIsUploading(true);
-    Swal.fire({ title: 'Memproses...', text: 'Mengunggah file ke sistem', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    Swal.fire({ title: 'Memproses...', text: 'Mengunggah file ke Google Drive', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     
     try {
       const base64Data = file.type.startsWith('image/') ? await compressImage(file) : await new Promise(r => { const f = new FileReader(); f.onload = e => r(e.target.result); f.readAsDataURL(file); });
-      const response = await poster('uploadRaport', { namaSiswa, jenisRaport, tahunPelajaran, kelas: "-", fileName: file.name, base64: base64Data });
       
-      if (response && response.status === 'error') throw new Error(response.message);
+      // 1. Upload ke Google Drive via Apps Script
+      const driveResponse = await poster('uploadRaport', { namaSiswa, jenisRaport, tahunPelajaran, kelas: "-", fileName: file.name, base64: base64Data });
+      if (driveResponse && driveResponse.status === 'error') throw new Error(driveResponse.message);
 
-      Swal.fire('Sukses!', `Raport ${namaSiswa} tersimpan di folder Drive dan link terekam di sistem.`, 'success');
+      Swal.fire({ title: 'Menyimpan...', text: 'Menyimpan tautan ke Database Turso', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+      // 2. Simpan URL ke Turso
+      const tursoRes = await fetch('/api/db-raport', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          namaSiswa, kelas: "-", jenisRaport, tahunPelajaran, 
+          fileId: driveResponse.fileId, fileUrl: driveResponse.url, namaFile: driveResponse.fileName
+        })
+      });
+      const tursoData = await tursoRes.json();
+      if (tursoData.status === 'error') throw new Error(tursoData.message);
+
+      Swal.fire('Sukses!', `Raport ${namaSiswa} tersimpan di Drive dan Database.`, 'success');
       setFile(null); 
       mutate();
     } catch (err) { 
       const errorMsg = err.response?.data?.message || err.message || 'Terjadi kesalahan sistem';
-      Swal.fire('Error Detail', `Gagal upload: ${errorMsg}. Pastikan Apps Script telah di-deploy ulang dan diberi izin Drive.`, 'error'); 
+      Swal.fire('Error Detail', `Gagal upload: ${errorMsg}`, 'error'); 
     }
     setIsUploading(false);
   };
 
   const handleDownloadGlobal = async () => {
-    if (!raportGlobal || raportGlobal.length === 0) return Swal.fire('Info', `Belum ada ${filterJenisGlobal} yang diunggah untuk tahun ${filterTahunGlobal}.`, 'info');
+    if (!raportGlobal || raportGlobal.length === 0) return Swal.fire('Info', `Belum ada ${filterJenisGlobal} untuk tahun ${filterTahunGlobal}.`, 'info');
     
     const targetPdfs = raportGlobal.map(r => r.url);
-    Swal.fire({ title: 'Menyiapkan PDF', text: `Menggabungkan ${targetPdfs.length} file...`, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    Swal.fire({ title: 'Menyiapkan PDF', text: `Menggabungkan ${targetPdfs.length} file dari database...`, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
     try {
       const namaFile = `Global_${filterJenisGlobal.replace(/ /g, '_')}_${filterTahunGlobal.replace(/\//g, '-')}`;
       await downloadMergedRaport(targetPdfs, namaFile);
@@ -93,7 +113,7 @@ export default function RaportManager() {
     <Layout>
       <div className="mb-6 border-b pb-4">
         <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Manajemen Raport & Dokumen</h2>
-        <p className="text-slate-500 mt-1">Sistem arsip Drive otomatis berbasis Tahun dan Jenis Raport.</p>
+        <p className="text-slate-500 mt-1">Sistem arsip otomatis: Drive untuk File, Turso untuk Database.</p>
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -116,7 +136,7 @@ export default function RaportManager() {
             <div>
               <label className="block text-sm font-semibold text-slate-600 mb-1">Tahun Pelajaran</label>
               <select className="w-full border p-2.5 rounded-lg bg-slate-50 outline-none" value={tahunPelajaran} onChange={e => setTahunPelajaran(e.target.value)}>
-                <option>2025/2026</option><option>2026/2027</option><option>2027/2028</option>
+                <option>2025/2026</option><option>2026/2027</option>
               </select>
             </div>
             <div>
@@ -131,7 +151,7 @@ export default function RaportManager() {
               <input type="file" accept=".pdf, image/*" className="w-full border p-2 rounded-lg bg-slate-50 text-sm" onChange={e => setFile(e.target.files[0])} required />
             </div>
             <button type="submit" disabled={isUploading || !namaSiswa} className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold shadow-md hover:bg-blue-700 disabled:opacity-50 mt-4 transition-colors">
-               <i className="fas fa-upload mr-2"></i> {isUploading ? 'Menyimpan...' : 'Simpan ke Drive & DB'}
+               <i className="fas fa-upload mr-2"></i> {isUploading ? 'Menyimpan...' : 'Simpan ke Drive & Turso'}
             </button>
           </form>
         </div>
@@ -140,7 +160,7 @@ export default function RaportManager() {
           <div className="bg-slate-800 p-6 rounded-xl shadow-md text-white flex flex-col xl:flex-row justify-between items-center gap-4">
             <div>
               <h3 className="font-bold text-lg text-amber-400">Unduh Gabungan (Global)</h3>
-              <p className="text-sm text-slate-300">Gabungkan PDF seluruh siswa dalam 1 file.</p>
+              <p className="text-sm text-slate-300">Ambil URL dari Turso dan gabungkan PDF.</p>
             </div>
             <div className="flex flex-wrap gap-2 justify-center">
                <select className="border-none p-2 rounded bg-slate-700 text-sm outline-none" value={filterTahunGlobal} onChange={e => setFilterTahunGlobal(e.target.value)}><option>2025/2026</option><option>2026/2027</option></select>
@@ -151,7 +171,7 @@ export default function RaportManager() {
 
           {namaSiswa ? (
             <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100">
-              <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-2">Arsip Pribadi: <span className="text-blue-600">{namaSiswa}</span></h3>
+              <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-2">Arsip Database Turso: <span className="text-blue-600">{namaSiswa}</span></h3>
               <table className="w-full text-left text-sm border-collapse">
                 <thead className="bg-slate-50 text-slate-600">
                   <tr><th className="p-3 border-b">Tahun</th><th className="p-3 border-b">Jenis</th><th className="p-3 border-b">Aksi</th></tr>
@@ -168,8 +188,8 @@ export default function RaportManager() {
             </div>
           ) : (
             <div className="bg-white p-10 rounded-xl shadow-md text-center border-dashed border-2 border-slate-200">
-              <i className="fas fa-search text-3xl text-slate-300 mb-3"></i>
-              <p className="text-slate-500">Cari nama siswa di sebelah kiri untuk melihat arsip pribadinya.</p>
+              <i className="fas fa-database text-3xl text-slate-300 mb-3"></i>
+              <p className="text-slate-500">Cari nama siswa di sebelah kiri untuk melihat arsip di Turso.</p>
             </div>
           )}
         </div>
